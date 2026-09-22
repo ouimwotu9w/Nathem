@@ -1,0 +1,48 @@
+name: nathim
+description: "ناظِم — منظم المهام ومواعيد الأسبوع: مهام يومية، روتين ثابت، مواعيد متكررة بتذكيرات، وإحصائيات التزام."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  provider: ^6.1.2
+  shared_preferences: ^2.2.3
+  share_plus: ^10.0.2
+  flutter_local_notifications: ^18.0.1
+  timezone: '>=0.9.4 <0.11.0'
+  flutter_timezone: ^3.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/icon/icon.png
+  adaptive_icon_background: "#1A237E"
+  adaptive_icon_foreground: assets/icon/icon_fg.png
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700

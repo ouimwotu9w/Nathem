@@ -5,10 +5,11 @@ import '../data/app_data.dart';
 import '../services/notifications.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
+import 'tasks_screen.dart';
 import 'today_screen.dart';
 import 'week_screen.dart';
 
-/// الهيكل الرئيسي: 4 تبويبات سفلية — اليوم / الأسبوع / الإحصائيات / الإعدادات
+/// الهيكل الرئيسي: 5 تبويبات سفلية — اليوم / الأسبوع / المهام / الإحصائيات / الإعدادات
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -34,11 +35,14 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: const [
-          TodayScreen(),
-          WeekScreen(),
-          StatsScreen(),
-          SettingsScreen(),
+        children: [
+          TodayScreen(
+            onOpenTasks: () => setState(() => _index = 2),
+          ),
+          const WeekScreen(),
+          const TasksScreen(),
+          const StatsScreen(),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -54,6 +58,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.event_repeat_outlined),
             selectedIcon: Icon(Icons.event_repeat),
             label: 'الأسبوع',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.checklist_outlined),
+            selectedIcon: Icon(Icons.checklist_rounded),
+            label: 'المهام',
           ),
           NavigationDestination(
             icon: Icon(Icons.insights_outlined),

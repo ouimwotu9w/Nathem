@@ -123,6 +123,17 @@ class _AppointmentSheetState extends State<AppointmentSheet> {
 
   bool get _editing => widget.existing != null;
 
+  /// هل الوقت/اليوم المختار حاليًا يتعارض مع موعد قائم؟
+  bool _timeConflictsWithExisting(BuildContext context) {
+    if (_end <= _start) return false;
+    return context.read<AppData>().hasConflictWith(
+          weekday: _weekday,
+          start: _start,
+          end: _end,
+          ignoreId: widget.existing?.id,
+        );
+  }
+
   @override
   void dispose() {
     _title.dispose();
@@ -288,6 +299,36 @@ class _AppointmentSheetState extends State<AppointmentSheet> {
                 ),
               ],
             ),
+            if (_timeConflictsWithExisting(context)) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: scheme.errorContainer.withAlpha(90),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: scheme.error.withAlpha(120)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        size: 16, color: scheme.error),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'في موعد آخر متعارض مع الوقت ده في نفس اليوم — عدّل الوقت أو هيبقوا فوق بعض',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          height: 1.5,
+                          color: scheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             DropdownButtonFormField<int>(
               initialValue: _reminder,

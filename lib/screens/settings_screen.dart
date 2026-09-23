@@ -86,6 +86,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ));
   }
 
+  /// تجربة الإشعارات: طلب الصلاحيات ثم جدولة إشعار بعد 10 ثواني
+  /// وعرض تقرير بحالة الصلاحيات على الجهاز
+  Future<void> _testNotification() async {
+    final sm = ScaffoldMessenger.of(context);
+    await NotificationService.instance.requestPermissions();
+    final res =
+        await NotificationService.instance.scheduleTestNotification(seconds: 10);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تجربة الإشعارات'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _StatusRow(
+              ok: res.notificationsEnabled,
+              text: res.notificationsEnabled
+                  ? 'صلاحية الإشعارات: مفعّلة'
+                  : 'صلاحية الإشعارات: متوقفة — فعّلها من إعدادات النظام (التطبيقات ← ناظِم ← الإشعارات)',
+            ),
+            const SizedBox(height: 8),
+            _StatusRow(
+              ok: res.exactSchedulingWorked != false,
+              neutral: res.exactSchedulingWorked == null,
+              text: res.exactSchedulingWorked == null
+                  ? 'التنبيهات الدقيقة: تعذّر فحصها — الإشعار هيوصل بس ممكن يتأخر شوية'
+                  : res.exactSchedulingWorked!
+                      ? 'التنبيهات الدقيقة: شغالة — الإشعارات هتوصل في وقتها بالظبط'
+                      : 'التنبيهات الدقيقة: مش مسموحة — الإشعارات هتوصل بس ممكن تتأخر. اسمح بـ «المنبهات والتنبيهات» لإظهار ناظِم من إعدادات النظام',
+            ),
+            const Divider(height: 20),
+            Text(
+              res.scheduled
+                  ? 'تم جدولة إشعار تجريبي بعد 10 ثواني — سيب التطبيق في الخلفية (أو اقفله) لحد ما يوصلك، عشان نتأكد إن التذكيرات شغالة على جهازك.'
+                  : 'تعذّرت جدولة الإشعار على الجهاز ده. جرّب: السماح بالإشعارات من النظام، وتفعيل «المنبهات والتنبيهات» للتطبيق، ثم حاول تاني.',
+              style: const TextStyle(fontSize: 13, height: 1.7),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('تمام'),
+          ),
+        ],
+      ),
+    );
+    if (res.notificationsEnabled || !res.scheduled) {
+      sm.showSnackBar(const SnackBar(
+        content: Text('لو الإشعار مش وصل خلال دقيقة، راجع إعدادات النظام من الزر اللي فوقه'),
+      ));
+    }
+  }
+
   Future<void> _clearAll() async {
     final sm = ScaffoldMessenger.of(context);
     final data = context.read<AppData>();
@@ -181,6 +237,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
                   ListTile(
+                    leading: const Icon(Icons.science_outlined),
+                    title: const Text('جرّب إشعار تجريبي',
+                        style: TextStyle(fontSize: 14.5)),
+                    subtitle: Text(
+                      'يوصلك إشعار بعد 10 ثواني عشان تتأكد إن التذكيرات شغالة',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    onTap: _testNotification,
+                  ),
+                  ListTile(
                     leading: const Icon(Icons.info_outline),
                     title: const Text('كيف تعمل التذكيرات؟',
                         style: TextStyle(fontSize: 14.5)),
@@ -199,6 +268,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         content: const Text(
                           'عند إضافة موعد وتحديد تذكير له، يحفظ ناظِم إشعارًا في نظام أندرويد يتكرر كل أسبوع في نفس اليوم والساعة.\n\n'
                           'لو الإشعارات مش واصلة:\n'
+                          '• استخدم زر «جرّب إشعار تجريبي» للتأكد بسرعة.\n'
                           '• وافق على صلاحية الإشعارات من الزر أعلاه.\n'
                           '• من إعدادات الهاتف: التطبيقات ← ناظِم ← الإشعارات وفعّلها.\n'
                           '• لو نظامك بيقفل تطبيقات الخلفية (شركات البطاريات)، اسمح للتطبيق بالعمل في الخلفية.',
@@ -277,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ListTile(
                     leading: Icon(Icons.auto_awesome,
                         color: scheme.tertiary, size: 22),
-                    title: const Text('ناظِم — الإصدار 1.0',
+                    title: const Text('ناظِم — الإصدار 1.1',
                         style: TextStyle(fontSize: 14.5)),
                     subtitle: Text(
                       'منظم مهام ومواعيد أسبوعية متكررة — يعمل كليًا بدون إنترنت وبياناتك على جهازك فقط.',
@@ -294,6 +364,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ============ صف حالة (صلاحيات الإشعارات) ============
+
+class _StatusRow extends StatelessWidget {
+  const _StatusRow({required this.ok, required this.text, this.neutral = false});
+
+  final bool ok;
+  final bool neutral;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = neutral ? scheme.tertiary : (ok ? Colors.green : scheme.error);
+    final icon = neutral
+        ? Icons.help_outline
+        : (ok ? Icons.check_circle : Icons.cancel);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 13, height: 1.6),
+          ),
+        ),
+      ],
     );
   }
 }

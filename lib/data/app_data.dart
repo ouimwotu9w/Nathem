@@ -169,6 +169,47 @@ class AppData extends ChangeNotifier {
     return null;
   }
 
+  // ================= كشف تعارض المواعيد =================
+
+  /// هل الموعدان [a] و [b] متقاطعان زمنيًا؟
+  /// (التلاقي عند الحدود — نهاية أحدهم = بداية الآخر — ليس تعارضًا)
+  static bool _overlaps(WeekAppointment a, WeekAppointment b) =>
+      a.startMinutes < b.endMinutes && b.startMinutes < a.endMinutes;
+
+  /// معرفات المواعيد المتعارضة زمنيًا في يوم معين من الأسبوع.
+  Set<String> conflictIdsForWeekday(int weekday) {
+    final apps = appointmentsForWeekday(weekday);
+    final ids = <String>{};
+    for (var i = 0; i < apps.length; i++) {
+      for (var j = i + 1; j < apps.length; j++) {
+        if (_overlaps(apps[i], apps[j])) {
+          ids.add(apps[i].id);
+          ids.add(apps[j].id);
+        }
+      }
+    }
+    return ids;
+  }
+
+  /// عدد المواعيد المتعارضة في يوم معين (لشارة التنبيه على أزرار الأيام)
+  int conflictCountForWeekday(int weekday) =>
+      conflictIdsForWeekday(weekday).length;
+
+  /// هل التوقيت المطلوب سيتعارض مع موعد موجود؟
+  /// [ignoreId] يُستثنى عند تعديل موعد قائم.
+  bool hasConflictWith({
+    required int weekday,
+    required int start,
+    required int end,
+    String? ignoreId,
+  }) {
+    for (final a in _appointments) {
+      if (!a.active || a.weekday != weekday || a.id == ignoreId) continue;
+      if (start < a.endMinutes && a.startMinutes < end) return true;
+    }
+    return false;
+  }
+
   Future<void> addAppointment(String title, String note, int weekday,
       int start, int end, int reminder) async {
     _appointments.add(WeekAppointment(

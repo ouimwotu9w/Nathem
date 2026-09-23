@@ -6,6 +6,21 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models/models.dart' as m;
 import '../utils/date_utils.dart';
 
+/// نتيجة تجربة الإشعار: حالة الصلاحيات + هل تمت الجدولة فعلًا
+class NotificationTestResult {
+  const NotificationTestResult({
+    required this.ready,
+    required this.notificationsEnabled,
+    required this.exactSchedulingWorked,
+    required this.scheduled,
+  });
+
+  final bool ready; // هل نجحت تهيئة خدمة الإشعارات أصلًا
+  final bool notificationsEnabled; // صلاحية إشعارات النظام (أندرويد 13+)
+  final bool? exactSchedulingWorked; // هل نجحت الجدولة الدقيقة (exact)
+  final bool scheduled; // هل تم جدولة الإشعار التجريبي بنجاح
+}
+
 /// خدمة التذكيرات: جدولة إشعارات أندرويد المحلية للمواعيد المتكررة أسبوعيًا.
 class NotificationService {
   NotificationService._();
@@ -19,6 +34,10 @@ class NotificationService {
 
   static const String _channelId = 'nathim_reminders';
   static const String _channelName = 'تذكيرات المواعيد';
+
+  static const int _testNotificationId = 424242;
+  static const String _testChannelId = 'nathim_test';
+  static const String _testChannelName = 'إشعار تجريبي';
 
   Future<void> init() async {
     if (_ready) return;
@@ -136,5 +155,83 @@ class NotificationService {
         }
       }
     } catch (_) {}
+  }
+
+  /// جدولة إشعار تجريبي بعد [seconds] ثانية + فحص الصلاحيات،
+  /// ليقدر المستخدم يتأكد بنفسه إن التذكيرات شغالة على جهازه.
+  Future<NotificationTestResult> scheduleTestNotification(
+      {int seconds = 10}) async {
+    await init();
+
+    // فحص صلاحية إشعارات النظام
+    var notificationsEnabled = false;
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      notificationsEnabled = await android?.areNotificationsEnabled() ?? false;
+    } catch (_) {}
+
+    if (!_ready) {
+      return NotificationTestResult(
+        ready: false,
+        notificationsEnabled: notificationsEnabled,
+        exactSchedulingWorked: null,
+        scheduled: false,
+      );
+    }
+
+    var scheduled = false;
+    bool? exactWorked;
+    try {
+      final fire = tz.TZDateTime.now(tz.local).add(Duration(seconds: seconds));
+      const body = 'لو الإشعار ده وصلك، يبقى تذكيرات ناظِم شغالة تمام — '
+          'هتوصلك تنبيهات مواعيدك في وقتها.';
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          _testChannelId,
+          _testChannelName,
+          channelDescription: 'إشعار تجريبي للتأكد من عمل التذكيرات',
+          importance: Importance.max,
+          priority: Priority.max,
+          styleInformation: BigTextStyleInformation(body),
+          autoCancel: true,
+        ),
+      );
+      Future<void> trySchedule(AndroidScheduleMode mode) =>
+          _plugin.zonedSchedule(
+            _testNotificationId,
+            'إشعار تجريبي — ناظِم',
+            body,
+            fire,
+            details,
+            androidScheduleMode: mode,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+          );
+      try {
+        await trySchedule(AndroidScheduleMode.exactAllowWhileIdle);
+        scheduled = true;
+        exactWorked = true;
+      } catch (_) {
+        try {
+          await trySchedule(AndroidScheduleMode.inexactAllowWhileIdle);
+          scheduled = true;
+          exactWorked = false;
+        } catch (_) {
+          scheduled = false;
+          exactWorked = null;
+        }
+      }
+    } catch (_) {
+      scheduled = false;
+      exactWorked = null;
+    }
+
+    return NotificationTestResult(
+      ready: true,
+      notificationsEnabled: notificationsEnabled,
+      exactSchedulingWorked: exactWorked,
+      scheduled: scheduled,
+    );
   }
 }

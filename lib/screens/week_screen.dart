@@ -25,6 +25,7 @@ class _WeekScreenState extends State<WeekScreen> {
     final data = context.watch<AppData>();
     final scheme = Theme.of(context).colorScheme;
     final apps = data.appointmentsForWeekday(_selected);
+    final conflicts = data.conflictIdsForWeekday(_selected);
     final totalMinutes =
         apps.fold<int>(0, (s, a) => s + a.durationMinutes);
 
@@ -74,6 +75,7 @@ class _WeekScreenState extends State<WeekScreen> {
                 children: kWeekOrder.map((wd) {
                   final sel = wd == _selected;
                   final count = data.countForWeekday(wd);
+                  final hasConflict = data.conflictCountForWeekday(wd) > 0;
                   return Padding(
                     padding: const EdgeInsetsDirectional.only(end: 8),
                     child: GestureDetector(
@@ -87,8 +89,11 @@ class _WeekScreenState extends State<WeekScreen> {
                               : scheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color:
-                                sel ? scheme.primary : scheme.outlineVariant,
+                            color: sel
+                                ? scheme.primary
+                                : hasConflict
+                                    ? scheme.error.withAlpha(150)
+                                    : scheme.outlineVariant,
                           ),
                         ),
                         child: Row(
@@ -104,6 +109,17 @@ class _WeekScreenState extends State<WeekScreen> {
                                     : scheme.onSurfaceVariant,
                               ),
                             ),
+                            if (hasConflict) ...[
+                              const SizedBox(width: 5),
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: scheme.error,
+                                ),
+                              ),
+                            ],
                             if (count > 0) ...[
                               const SizedBox(width: 6),
                               Container(
@@ -144,11 +160,45 @@ class _WeekScreenState extends State<WeekScreen> {
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
                       children: [
+                        if (conflicts.isNotEmpty) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            margin: const EdgeInsets.only(bottom: 10),
+                            decoration: BoxDecoration(
+                              color: scheme.errorContainer.withAlpha(90),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: scheme.error.withAlpha(130)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded,
+                                    size: 20, color: scheme.error),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    conflicts.length == 2
+                                        ? 'فيه موعدين متعارضين يوم ${weekdayName(_selected)} — اضغط على أي واحد فيهم وعدّل وقته'
+                                        : 'فيه ${conflicts.length} مواعيد متعارضة يوم ${weekdayName(_selected)} — عدّل أوقاتها',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.5,
+                                      color: scheme.onErrorContainer,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         ...apps.map(
                           (a) => Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: AppointmentTile(
                               appointment: a,
+                              conflict: conflicts.contains(a.id),
                               onTap: () =>
                                   showAppointmentSheet(context, existing: a),
                               onCopy: () => _copyToDay(a),

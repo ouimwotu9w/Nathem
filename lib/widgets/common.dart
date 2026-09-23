@@ -209,6 +209,7 @@ class AppointmentTile extends StatelessWidget {
     required this.onTap,
     this.onCopy,
     this.showReminder = true,
+    this.conflict = false,
   });
 
   final WeekAppointment appointment;
@@ -216,13 +217,25 @@ class AppointmentTile extends StatelessWidget {
   final VoidCallback? onCopy;
   final bool showReminder;
 
+  /// true = الموعد متعارض زمنيًا مع موعد آخر في نفس اليوم
+  /// → هالة حمراء + سطر تحذير يطالب بالتعديل
+  final bool conflict;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final a = appointment;
     return Card(
+      elevation: conflict ? 6 : 1,
+      shadowColor: conflict ? scheme.error.withAlpha(140) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: conflict
+            ? BorderSide(color: scheme.error.withAlpha(210), width: 1.4)
+            : BorderSide.none,
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -236,7 +249,7 @@ class AppointmentTile extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
+                      color: conflict ? scheme.error : scheme.onSurface,
                     ),
                   ),
                   Text(
@@ -253,7 +266,7 @@ class AppointmentTile extends StatelessWidget {
                 width: 3,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: scheme.tertiary,
+                  color: conflict ? scheme.error : scheme.tertiary,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -284,7 +297,30 @@ class AppointmentTile extends StatelessWidget {
                         ),
                       ),
                     ],
-                    if (showReminder && a.reminderMinutesBefore > 0) ...[
+                    if (conflict) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: scheme.error,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'متعارض مع موعد آخر في نفس الوقت — اضغط وعدّل وقته',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (showReminder &&
+                        a.reminderMinutesBefore > 0) ...[
                       const SizedBox(height: 4),
                       Row(
                         children: [
@@ -320,7 +356,7 @@ class AppointmentTile extends StatelessWidget {
               Icon(
                 Icons.edit_outlined,
                 size: 16,
-                color: scheme.onSurfaceVariant,
+                color: conflict ? scheme.error : scheme.onSurfaceVariant,
               ),
             ],
           ),

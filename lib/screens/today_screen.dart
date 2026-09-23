@@ -8,8 +8,12 @@ import '../widgets/charts.dart';
 import '../widgets/common.dart';
 import '../widgets/sheets.dart';
 
+/// تبويب اليوم: الموعد القادم + مواعيد النهاردة + الروتين
+/// (المهام ليها تبويب مستقل — [onOpenTasks] ينقل المستخدم له)
 class TodayScreen extends StatefulWidget {
-  const TodayScreen({super.key});
+  const TodayScreen({super.key, this.onOpenTasks});
+
+  final VoidCallback? onOpenTasks;
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
@@ -40,6 +44,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final routine = data.routineSorted;
     final routineDone = data.routineDoneCountFor(key);
     final next = data.nextAppointmentToday(now);
+    final conflicts = data.conflictIdsForWeekday(now.weekday);
     final totalItems = tasks.length + routine.length;
     final doneItems = done + routineDone;
     final ratio = totalItems == 0 ? 0.0 : doneItems / totalItems;
@@ -157,24 +162,36 @@ class _TodayScreenState extends State<TodayScreen> {
             ),
             if (next != null) ...[
               const SizedBox(height: 14),
-              _NextAppointmentCard(appointment: next, now: now),
+              _NextAppointmentCard(
+                appointment: next,
+                now: now,
+                conflict: conflicts.contains(next.id),
+                onEdit: () => showAppointmentSheet(context, existing: next),
+              ),
             ],
+            const SizedBox(height: 6),
             const SectionHeader(title: 'مواعيد اليوم'),
             if (apps.isEmpty)
               const MiniEmpty(
                 title: 'مافيش مواعيد النهاردة',
                 subtitle: 'من تاب «الأسبوع» تقدر تحدد مواعيد كل يوم تتكرر أسبوعيًا',
               )
-            else
+            else ...[
+              if (conflicts.isNotEmpty) ...[
+                _ConflictBanner(count: conflicts.length, dayName: 'النهاردة'),
+                const SizedBox(height: 10),
+              ],
               ...apps.map(
                 (a) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: AppointmentTile(
                     appointment: a,
+                    conflict: conflicts.contains(a.id),
                     onTap: () => showAppointmentSheet(context, existing: a),
                   ),
                 ),
               ),
+            ],
             SectionHeader(
               title: 'الروتين اليومي',
               trailing: IconButton(
@@ -234,26 +251,63 @@ class _TodayScreenState extends State<TodayScreen> {
                   ),
                 ),
               ),
-            SectionHeader(
-              title: 'مهام اليوم',
-              trailing: IconButton(
-                tooltip: 'إضافة مهمة',
-                icon: const Icon(Icons.add_circle_outline),
-                onPressed: () => showTaskSheet(context, initialDate: now),
-              ),
-            ),
-            if (tasks.isEmpty)
-              const MiniEmpty(
-                title: 'مافيش مهام النهاردة',
-                subtitle: 'اضغط زر «مهمة جديدة» بالأسفل',
-              )
-            else
-              ...tasks.map(
-                (t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _TaskTile(task: t),
+            const SizedBox(height: 6),
+            // ملخص المهام — ينقل لتبويب المهام المستقل
+            Card(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: widget.onOpenTasks,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: scheme.primaryContainer.withAlpha(120),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.checklist_rounded,
+                          size: 21,
+                          color: scheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'مهام النهاردة: $done من ${tasks.length}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.onSurface,
+                              ),
+                            ),
+                            Text(
+                              'التودو ليست كاملة في تبويب المهام',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_left,
+                        size: 22,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -261,77 +315,39 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 }
 
-// ============ بطاقة الموعد القادم ============
+// ============ لافتة تحذير التعارض ============
 
-class _NextAppointmentCard extends StatelessWidget {
-  const _NextAppointmentCard({required this.appointment, required this.now});
+class _ConflictBanner extends StatelessWidget {
+  const _ConflictBanner({required this.count, required this.dayName});
 
-  final WeekAppointment appointment;
-  final DateTime now;
+  final int count;
+  final String dayName;
 
   @override
   Widget build(BuildContext context) {
-    final a = appointment;
-    final diff = a.startMinutes - minutesNow(now);
-    final starting = diff <= 0;
-    final when = starting
-        ? 'جاري الآن — ينتهي ${formatDurationShort((a.endMinutes - minutesNow(now)).clamp(1, 24 * 60))}'
-        : 'بعد ${formatDurationShort(diff)}';
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A237E), Color(0xFF303F9F)],
-          begin: AlignmentDirectional.topStart,
-          end: AlignmentDirectional.bottomEnd,
-        ),
-        borderRadius: BorderRadius.circular(18),
+        color: scheme.errorContainer.withAlpha(90),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.error.withAlpha(130)),
       ),
       child: Row(
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE3C26B).withAlpha(50),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: const Icon(
-              Icons.schedule,
-              color: Color(0xFFE3C26B),
-            ),
-          ),
-          const SizedBox(width: 14),
+          Icon(Icons.warning_amber_rounded, size: 20, color: scheme.error),
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'موعدك القادم',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: Color(0xFFB9C2E8),
-                  ),
-                ),
-                Text(
-                  a.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFE9ECFA),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${formatRange(a.startMinutes, a.endMinutes)} — $when',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFFB9C2E8),
-                  ),
-                ),
-              ],
+            child: Text(
+              count == 2
+                  ? 'فيه موعدين متعارضين $dayName — اضغط على أي واحد فيهم وعدّل وقته'
+                  : 'فيه $count مواعيد متعارضة $dayName — عدّل أوقاتها',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                height: 1.5,
+                color: scheme.onErrorContainer,
+              ),
             ),
           ),
         ],
@@ -340,61 +356,240 @@ class _NextAppointmentCard extends StatelessWidget {
   }
 }
 
-// ============ بلاطة مهمة ============
+// ============ بطاقة الموعد القادم (تصميم محسّن) ============
 
-class _TaskTile extends StatelessWidget {
-  const _TaskTile({required this.task});
+class _NextAppointmentCard extends StatelessWidget {
+  const _NextAppointmentCard({
+    required this.appointment,
+    required this.now,
+    this.conflict = false,
+    this.onEdit,
+  });
 
-  final Task task;
+  final WeekAppointment appointment;
+  final DateTime now;
+  final bool conflict;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final data = context.read<AppData>();
-    final cat = categoryByKey(task.category);
-    return Card(
-      child: ListTile(
-        onTap: () => data.toggleTask(task),
-        leading: Icon(
-          task.done ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: task.done ? scheme.primary : scheme.onSurfaceVariant,
+    final a = appointment;
+    final mins = minutesNow(now);
+    final ongoing = mins >= a.startMinutes && mins < a.endMinutes;
+    final diff = a.startMinutes - mins;
+    final when = ongoing
+        ? 'جاري الآن'
+        : diff > 0
+            ? 'بعد ${formatDurationShort(diff)}'
+            : 'انتهى';
+    final progress = ongoing
+        ? ((mins - a.startMinutes) / a.durationMinutes).clamp(0.0, 1.0)
+        : null;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A237E), Color(0xFF303F9F)],
+          begin: AlignmentDirectional.topStart,
+          end: AlignmentDirectional.bottomEnd,
         ),
-        title: Text(
-          task.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w600,
-            color: task.done ? scheme.onSurfaceVariant : scheme.onSurface,
-            decoration:
-                task.done ? TextDecoration.lineThrough : TextDecoration.none,
+        boxShadow: [
+          BoxShadow(
+            color: conflict
+                ? const Color(0xFFEF5350).withAlpha(110)
+                : const Color(0xFF1A237E).withAlpha(90),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
+        ],
+        border: Border.all(
+          color: conflict
+              ? const Color(0xFFEF5350).withAlpha(220)
+              : const Color(0xFFE3C26B).withAlpha(60),
+          width: conflict ? 1.6 : 1,
         ),
-        subtitle: task.note.isEmpty
-            ? null
-            : Text(
-                task.note,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: scheme.onSurfaceVariant,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onEdit,
+            child: Stack(
+              children: [
+                // زخارف دائرية خفيفة
+                PositionedDirectional(
+                  top: -28,
+                  end: -20,
+                  child: Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFE3C26B).withAlpha(22),
+                    ),
+                  ),
                 ),
-              ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(cat.icon, size: 15, color: cat.color),
-            const SizedBox(width: 6),
-            Icon(Icons.flag, size: 15, color: task.priority.color),
-            const SizedBox(width: 2),
-            IconButton(
-              tooltip: 'تعديل',
-              icon: const Icon(Icons.edit_outlined, size: 17),
-              onPressed: () => showTaskSheet(context, existing: task),
+                PositionedDirectional(
+                  bottom: -34,
+                  start: -18,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withAlpha(12),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE3C26B).withAlpha(45),
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            child: const Icon(
+                              Icons.schedule,
+                              color: Color(0xFFE3C26B),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ongoing ? 'موعد جارٍ الآن' : 'موعدك القادم',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.3,
+                                    color: Color(0xFFE3C26B),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  a.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFE9ECFA),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // شارة العد التنازلي
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: ongoing
+                                  ? const Color(0xFF4CAF50).withAlpha(60)
+                                  : const Color(0xFFE3C26B).withAlpha(38),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              when,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: ongoing
+                                    ? const Color(0xFFC8F0CC)
+                                    : const Color(0xFFE3C26B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.timelapse,
+                            size: 14,
+                            color: Color(0xFFB9C2E8),
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              formatRange(a.startMinutes, a.endMinutes),
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                color: Color(0xFFB9C2E8),
+                              ),
+                            ),
+                          ),
+                          if (a.reminderMinutesBefore > 0) ...[
+                            const Icon(
+                              Icons.alarm,
+                              size: 14,
+                              color: Color(0xFFB9C2E8),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'تذكير قبلها بـ ${reminderShort(a.reminderMinutesBefore)}',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: Color(0xFFB9C2E8),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (ongoing && progress != null) ...[
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 6,
+                            backgroundColor: Colors.white.withAlpha(40),
+                            color: const Color(0xFFE3C26B),
+                          ),
+                        ),
+                      ],
+                      if (conflict) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              size: 15,
+                              color: Color(0xFFFF8A80),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'الموعد ده متعارض مع موعد آخر في نفس الوقت — اضغط وعدّل وقته',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.4,
+                                  color: const Color(0xFFFF8A80).withAlpha(230),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
